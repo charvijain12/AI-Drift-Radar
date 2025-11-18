@@ -183,43 +183,59 @@ DOMAIN_CANONICAL = {
     "energy-iot": ["energy","iot","sensor","meter","energy-iot"]
 }
 
-# -----------------------------------------------
-# SMART DOMAIN RESOLVER (UPDATED)
-# -----------------------------------------------
+# ---------------------------
+# SMART DOMAIN RESOLVER (DROP-IN)
+# ---------------------------
 def resolve_domain(text):
-    text = text.lower().strip()
+    if not text:
+        return None
+    txt = text.lower().strip()
 
-    # Prevent greetings from being mistaken for domains
-    invalid = ["hi", "hello", "hey", "yo", "help", "start", "run", "run analysis"]
-    if text in invalid:
+    # common greetings / short non-domain words to ignore
+    invalid = {"hi","hello","hey","yo","help","start","run","run analysis","thanks","thx"}
+    if txt in invalid:
         return None
 
-    # Built-in fuzzy domain mapping
+    # custom domain detection: "custom: airline" or "custom - airline"
+    if txt.startswith("custom:") or txt.startswith("custom -"):
+        parts = txt.split(":",1) if ":" in txt else txt.split("-",1)
+        if len(parts) > 1 and parts[1].strip():
+            return parts[1].strip().title()
+        return "Custom"
+
+    # fuzzy mapping of common aliases -> canonical domain names
     mapping = {
-        "ecommerce": ["ecom", "e-commerce", "e commerce", "online retail", "shopping"],
-        "finance": ["fin", "banking", "payments", "fintech"],
-        "healthcare": ["health", "medical", "hospital"],
-        "manufacturing": ["factory", "industrial", "production"],
-        "saas": ["software", "cloud app", "subscription"],
-        "logistics": ["supply chain", "shipping", "delivery", "fleet"],
-        "edtech": ["education", "learning", "school"],
-        "retail-offline": ["retail", "store", "mall", "offline"],
-        "insurance": ["policy", "claims", "insure"],
-        "energy-iot": ["iot", "smart meter", "energy", "grid"]
+        "E-commerce": ["ecom","e-commerce","e commerce","online retail","shopping","retail"],
+        "Finance": ["finance","fin","banking","payments","transactions","fintech"],
+        "Healthcare": ["healthcare","medical","health","clinic","hospital","med"],
+        "Manufacturing": ["manufacturing","factory","industrial","production"],
+        "SaaS": ["saas","software","software-as-a-service","web app","subscription"],
+        "Logistics": ["logistics","delivery","shipping","transport","supply chain"],
+        "EdTech": ["edtech","education","learning","school","university"],
+        "Retail-Offline": ["retail-offline","offline retail","store","brick and mortar"],
+        "Insurance": ["insurance","claims","insurer","policy"],
+        "Energy-IoT": ["energy","iot","meter","smart meter","power","grid"]
     }
 
-    # custom domain
-    if text.startswith("custom:"):
-        return text.replace("custom:", "").strip().title()
+    # exact or alias match
+    for canonical, aliases in mapping.items():
+        if txt == canonical.lower() or txt in aliases:
+            return canonical
+        for a in aliases:
+            if a in txt:
+                return canonical
 
-    # exact or fuzzy match
-    for dom, keys in mapping.items():
-        if text == dom:
-            return dom.title()
-        if any(k in text for k in keys):
-            return dom.title()
+    # substring match for canonical with spaces
+    for canonical in mapping:
+        if canonical.replace("-"," ").lower() in txt:
+            return canonical
+
+    # fallback: short single-word input -> title-cased domain
+    if len(txt.split()) <= 3:
+        return txt.title()
 
     return None
+
 
 
 # ---------------------------
@@ -725,68 +741,629 @@ elif page == "Sample Data":
 # - About
 # -----------------------------------------------
 
-# -----------------------------------------------
-# PAGE: Upload & Analyze
-# -----------------------------------------------
-if page == "Upload & Analyze":
-     
-    st.markdown("## 📤 Upload & Analyze")
-    st.write("Upload **reference** (old) and **current** (new) data to compute drift.")
+## ---------------------------
+# PAGE: Upload & Analyze (ROBUST DRIFT)
+# Replace existing Upload & Analyze page with this block
+# ---------------------------
+import numpy as np
+from scipy.stats import ks_2samp
 
-    ref_file = st.file_uploader("Upload reference_data.csv", type=["csv"], key="ref_csv")
-    cur_file = st.file_uploader("Upload current_data.csv", type=["csv"], key="cur_csv")
+# ============================================
+# FINAL DRIFT ENGINE + UPLOAD & ANALYZE PAGE
+# ============================================
+
+import numpy as np
+from scipy.stats import ks_2samp
+import plotly.graph_objects as go
+
+
+# ---------------------------
+# CLEAN PREPROCESSOR
+# ---------------------------
+def preprocess_for_drift(df):
+    df = df.copy()
+
+    # Fix numeric-like strings ("1,234", "20", "0")
+    for col in df.columns:
+        if df[col].dtype == object:
+            df[col] = (
+                df[col].astype(str)
+                .str.replace(",", "", regex=False)
+                .str.strip()
+            )
+            df[col] = pd.to_numeric(df[col], errors="ignore")
+
+    # Expand timestamp if present
+    for col in df.columns:
+        low = col.lower()
+        if any(k in low for k in ["timestamp", "date", "time"]):
+            try:
+                df[col] = pd.to_datetime(df[col], errors="coerce")
+                df[col + "_hour"] = df[col].dt.hour
+                df[col + "_day"] = df[col].dt.day
+                df[col + "_weekday"] = df[col].dt.weekday
+            except:
+                pass
+
+    return df
+
+
+# ---------------------------
+# COLUMN TYPE DETECTOR
+# ---------------------------
+def identify_valid_columns(df):
+    numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+
+    categorical_cols = []
+    for col in df.select_dtypes(include=["object"]).columns:
+        unique_count = df[col].nunique()
+        if 1 < unique_count <= 30:  # treat only *low-cardinality* text as categorical
+            categorical_cols.append(col)
+
+    return numeric_cols, categorical_cols
+
+
+# ---------------------------
+# NUMERIC DRIFT (KS Test)
+# ---------------------------
+def compute_numeric_drift(ref, cur):
+    results = {}
+    for col in ref.columns:
+        r, c = ref[col].dropna(), cur[col].dropna()
+
+        if len(r) < 3 or len(c) < 3:
+            continue
+
+        try:
+            stat, _ = ks_2samp(r, c)
+            results[col] = float(stat)
+        except:
+            pass
+
+    return results
+
+
+# ---------------------------
+# CATEGORICAL DRIFT (PSI)
+# ---------------------------
+def compute_categorical_drift(ref, cur):
+    results = {}
+
+    for col in ref.columns:
+        r_counts = ref[col].astype(str).value_counts(normalize=True)
+        c_counts = cur[col].astype(str).value_counts(normalize=True)
+
+        categories = set(r_counts.index) | set(c_counts.index)
+        psi = 0.0
+
+        for cat in categories:
+            r_p = r_counts.get(cat, 1e-6)
+            c_p = c_counts.get(cat, 1e-6)
+            psi += (r_p - c_p) * np.log((r_p + 1e-9) / (c_p + 1e-9))
+
+        results[col] = abs(float(psi))
+
+    return results
+
+
+# ---------------------------
+# FULL DRIFT WRAPPER
+# ---------------------------
+def compute_full_drift(ref_df, cur_df):
+    ref = preprocess_for_drift(ref_df)
+    cur = preprocess_for_drift(cur_df)
+
+    shared = list(set(ref.columns) & set(cur.columns))
+    if not shared:
+        return None, "No shared columns between reference and current data."
+
+    ref = ref[shared]
+    cur = cur[shared]
+
+    ref_num, ref_cat = identify_valid_columns(ref)
+    cur_num, cur_cat = identify_valid_columns(cur)
+
+    numeric_cols = list(set(ref_num) & set(cur_num))
+    categorical_cols = list(set(ref_cat) & set(cur_cat))
+
+    ignored_cols = [c for c in shared if c not in numeric_cols + categorical_cols]
+
+    drift = {}
+
+    if numeric_cols:
+        drift.update(compute_numeric_drift(ref[numeric_cols], cur[numeric_cols]))
+
+    if categorical_cols:
+        drift.update(compute_categorical_drift(ref[categorical_cols], cur[categorical_cols]))
+
+    if not drift:
+        return None, f"Could not compute drift. Usable = {numeric_cols + categorical_cols}; Ignored = {ignored_cols}"
+
+    return {
+        "drift": drift,
+        "numeric_columns": numeric_cols,
+        "categorical_columns": categorical_cols,
+        "ignored_columns": ignored_cols
+    }, None
+
+
+## ============================================
+# UPLOAD & ANALYZE — FINAL FULL BLOCK (DROP-IN)
+# ============================================
+
+import numpy as np
+from scipy.stats import ks_2samp
+import plotly.graph_objects as go
+from io import BytesIO
+from docx import Document
+from reportlab.platypus import SimpleDocTemplate, Paragraph
+from reportlab.lib.styles import getSampleStyleSheet
+
+# ------------------------------------------------------
+# ===== EXPORT HELPERS: TXT / DOCX / PDF
+# ------------------------------------------------------
+def export_txt(text: str):
+    return BytesIO(text.encode("utf-8"))
+
+def export_docx(text: str):
+    buffer = BytesIO()
+    doc = Document()
+    for line in text.split("\n"):
+        doc.add_paragraph(line)
+    doc.save(buffer)
+    buffer.seek(0)
+    return buffer
+
+def export_pdf(text: str):
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer)
+    styles = getSampleStyleSheet()
+    flow = []
+    for line in text.split("\n"):
+        flow.append(Paragraph(line, styles["Normal"]))
+    doc.build(flow)
+    buffer.seek(0)
+    return buffer
+
+# ------------------------------------------------------
+# ===== DOMAIN INFERENCE FROM DATA / DRIFT
+# ------------------------------------------------------
+def infer_domain_from_data(df=None, drift=None, metrics=None):
+    if df is not None:
+        cols = [c.lower() for c in df.columns]
+
+        ec = ["session", "product", "category", "cart", "order", "sku"]
+        fi = ["amount", "transaction", "balance", "loan", "credit"]
+        hc = ["glucose", "wbc", "pulse", "patient"]
+        mf = ["machine", "sensor", "pressure", "vibration", "rpm"]
+        rt = ["footfall", "store", "region", "sales"]
+        ss = ["tenant_id", "subscription", "user_id"]
+
+        def match(keys):
+            return any(k in col for col in cols for k in keys)
+
+        if match(ec): return "E-commerce"
+        if match(fi): return "Finance"
+        if match(hc): return "Healthcare"
+        if match(mf): return "Manufacturing"
+        if match(rt): return "Retail-Offline"
+        if match(ss): return "SaaS"
+
+    # drift-only inference
+    if drift is not None:
+        dcols = [c.lower() for c in drift.keys()]
+        if "glucose" in dcols or "wbc" in dcols:
+            return "Healthcare"
+        if "session" in dcols or "category" in dcols:
+            return "E-commerce"
+        if "amount" in dcols or "transaction" in dcols:
+            return "Finance"
+
+    # metric-only inference
+    if metrics is not None:
+        if "roc" in metrics or "precision" in metrics:
+            return "Generic ML"
+
+    return None
+
+
+# ------------------------------------------------------
+# ===== DRIFT ENGINE (final stable)
+# ------------------------------------------------------
+def preprocess_for_drift(df):
+    df = df.copy()
+
+    for col in df.columns:
+        if df[col].dtype == object:
+            df[col] = (
+                df[col].astype(str)
+                .str.replace(",", "", regex=False)
+                .str.strip()
+            )
+            df[col] = pd.to_numeric(df[col], errors="ignore")
+
+    for col in df.columns:
+        low = col.lower()
+        if any(k in low for k in ["timestamp", "date", "time"]):
+            try:
+                df[col] = pd.to_datetime(df[col], errors="coerce")
+                df[col + "_hour"] = df[col].dt.hour
+                df[col + "_day"] = df[col].dt.day
+                df[col + "_weekday"] = df[col].dt.weekday
+            except:
+                pass
+
+    return df
+
+
+def identify_valid_columns(df):
+    numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+
+    categorical_cols = []
+    for col in df.select_dtypes(include=['object']).columns:
+        nu = df[col].nunique()
+        if 1 < nu <= 30:
+            categorical_cols.append(col)
+
+    return numeric_cols, categorical_cols
+
+
+def compute_numeric_drift(ref, cur):
+    out = {}
+    for col in ref.columns:
+        r, c = ref[col].dropna(), cur[col].dropna()
+        if len(r) < 3 or len(c) < 3:
+            continue
+        try:
+            stat, _ = ks_2samp(r, c)
+            out[col] = float(stat)
+        except:
+            pass
+    return out
+
+
+def compute_categorical_drift(ref, cur):
+    out = {}
+    for col in ref.columns:
+        r_counts = ref[col].astype(str).value_counts(normalize=True)
+        c_counts = cur[col].astype(str).value_counts(normalize=True)
+        cats = set(r_counts.index) | set(c_counts.index)
+        psi = 0.0
+        for cat in cats:
+            r_p = r_counts.get(cat, 1e-6)
+            c_p = c_counts.get(cat, 1e-6)
+            psi += (r_p - c_p) * np.log((r_p + 1e-9) / (c_p + 1e-9))
+        out[col] = abs(float(psi))
+    return out
+
+
+def compute_full_drift(ref_df, cur_df):
+    ref = preprocess_for_drift(ref_df)
+    cur = preprocess_for_drift(cur_df)
+
+    shared = list(set(ref.columns) & set(cur.columns))
+    if not shared:
+        return None, "No shared columns found."
+
+    ref = ref[shared]
+    cur = cur[shared]
+
+    ref_num, ref_cat = identify_valid_columns(ref)
+    cur_num, cur_cat = identify_valid_columns(cur)
+
+    numeric_cols = list(set(ref_num) & set(cur_num))
+    categorical_cols = list(set(ref_cat) & set(cur_cat))
+
+    ignored = [c for c in shared if c not in numeric_cols + categorical_cols]
+
+    drift = {}
+    if numeric_cols:
+        drift.update(compute_numeric_drift(ref[numeric_cols], cur[numeric_cols]))
+    if categorical_cols:
+        drift.update(compute_categorical_drift(ref[categorical_cols], cur[categorical_cols]))
+
+    if not drift:
+        return None, f"Could not compute drift. Usable={numeric_cols+categorical_cols}, Ignored={ignored}"
+
+    return {
+        "drift": drift,
+        "numeric_columns": numeric_cols,
+        "categorical_columns": categorical_cols,
+        "ignored_columns": ignored,
+        "ref_processed": ref,
+        "cur_processed": cur
+    }, None
+
+
+# ------------------------------------------------------
+# ===== STREAMLIT PAGE: Upload & Analyze
+# ------------------------------------------------------
+if page == "Upload & Analyze":
+    st.markdown("## 📤 Upload & Analyze")
+
+    ref_file = st.file_uploader("Upload Reference Dataset (CSV)", type=["csv"])
+    cur_file = st.file_uploader("Upload Current Dataset (CSV)", type=["csv"])
 
     if ref_file and cur_file:
+
         df_ref = pd.read_csv(ref_file)
         df_cur = pd.read_csv(cur_file)
 
-        # Align columns
-        common_cols = list(set(df_ref.columns) & set(df_cur.columns))
-        df_ref = df_ref[common_cols]
-        df_cur = df_cur[common_cols]
+        st.success(f"Loaded {len(df_ref)} reference & {len(df_cur)} current rows.")
 
-        st.success(f"Loaded {len(df_ref)} reference rows & {len(df_cur)} current rows.")
-        st.write("### Shared Columns")
-        st.write(common_cols)
+        drift_result, drift_err = compute_full_drift(df_ref, df_cur)
 
-        # Compute drift
-        drift_scores = {}
-        for col in common_cols:
-            if pd.api.types.is_numeric_dtype(df_ref[col]):
-                psi_val = compute_psi_for_column(df_ref[col], df_cur[col])
-                if psi_val is not None:
-                    drift_scores[col] = round(psi_val, 4)
-            else:
-                delta = compute_categorical_delta_for_column(df_ref[col], df_cur[col])
-                if delta is not None:
-                    drift_scores[col] = round(delta, 4)
+        if drift_err:
+            st.error(drift_err)
+            st.stop()
 
-        st.session_state.last_drift = drift_scores
+        st.json(drift_result)
 
-        if drift_scores:
-            st.markdown("### 📊 Drift Summary")
+        # Save drift for assistant
+        st.session_state["last_drift"] = drift_result["drift"]
 
-            ds = pd.Series(drift_scores)
-            st.dataframe(ds.rename("drift_score"))
+        # ---------------------------------------------
+        # AUTO DOMAIN DETECTION
+        # ---------------------------------------------
+        auto_domain = infer_domain_from_data(df=df_ref, drift=drift_result["drift"])
+        if auto_domain:
+            st.session_state.domain = auto_domain
+            st.info(f"📌 Auto-detected domain: **{auto_domain}**")
+        # ===========================================================
+        # CLEAN & SMOOTH DRIFT VISUALIZATION (BINNED LINE GRAPHS)
+        # ===========================================================
 
-            # Radar chart
+        st.markdown("### 📈 Feature Drift Comparison")
+
+        ref_proc = drift_result["ref_processed"]
+        cur_proc = drift_result["cur_processed"]
+        drift_vals = drift_result["drift"]
+
+        # Only plot numeric columns that exist in both datasets
+        features_to_plot = [
+            c for c in ref_proc.columns
+            if c in cur_proc.columns
+               and pd.api.types.is_numeric_dtype(ref_proc[c])
+        ]
+
+        import numpy as np
+
+
+        def smooth_bins(series, bins=100):
+            """Aggregate values into N bins for smooth plotting."""
+            try:
+                ser = series.dropna().astype(float).values
+                if len(ser) == 0:
+                    return []
+                # split into N bins
+                binned = np.array_split(ser, bins)
+                smoothed = [np.mean(b) if len(b) > 0 else None for b in binned]
+                return smoothed
+            except:
+                return []
+
+
+        cols_per_row = 2
+        col_ptr = 0
+        row = st.columns(cols_per_row)
+
+        for feature in features_to_plot:
+
+            ref_smooth = smooth_bins(ref_proc[feature])
+            cur_smooth = smooth_bins(cur_proc[feature])
+
             fig = go.Figure()
-            fig.add_trace(go.Scatterpolar(
-                r=list(drift_scores.values()),
-                theta=list(drift_scores.keys()),
-                fill='toself'
+
+            fig.add_trace(go.Scatter(
+                y=ref_smooth,
+                mode="lines",
+                name="Reference (smoothed)",
+                line=dict(width=3, color="#FF5733")
             ))
+
+            fig.add_trace(go.Scatter(
+                y=cur_smooth,
+                mode="lines",
+                name="Current (smoothed)",
+                line=dict(width=3, color="#1E90FF")
+            ))
+
             fig.update_layout(
-                polar=dict(radialaxis=dict(visible=True)),
-                showlegend=False,
-                height=450
+                title=f"{feature} (drift: {drift_vals.get(feature, 0):.4f})",
+                margin=dict(l=10, r=10, t=30, b=10),
+                height=240,
+                showlegend=True,
+                legend=dict(orientation="h"),
             )
-            st.plotly_chart(fig, use_container_width=True)
+
+            with row[col_ptr]:
+                st.plotly_chart(fig, use_container_width=True)
+
+            col_ptr += 1
+            if col_ptr == cols_per_row:
+                col_ptr = 0
+                row = st.columns(cols_per_row)
+        # ======================================================================
+        #                  PREMIUM DRIFT EXPLANATION ENGINE
+        # ======================================================================
+
+        drift_vals = drift_result.get("drift", {})
+
+        # Sort highest → lowest
+        sorted_items = sorted(drift_vals.items(), key=lambda x: x[1], reverse=True)
+
+
+        # Severity thresholds
+        def drift_severity(score):
+            if score < 0.10:
+                return "LOW", "🟢"
+            elif score < 0.25:
+                return "MEDIUM", "🟡"
+            else:
+                return "HIGH", "🔴"
+
+
+        # Business meaning per feature (simple heuristic)
+        def business_impact(feature, score):
+            return (
+                f"- This feature `{feature}` is behaving differently now.\n"
+                f"- It may indicate a shift in customer behavior, system inputs, or real-world patterns.\n"
+                f"- Because drift = **{score:.3f}**, the model may rely on outdated expectations."
+            )
+
+
+        # Fix suggestions
+        def fix_suggestion(feature, score):
+            if score < 0.10:
+                return "- No urgent action needed."
+            elif score < 0.25:
+                return "- Monitor this feature closely.\n- Consider partial retraining if trend continues."
+            else:
+                return "- Retraining recommended.\n- Re-evaluate feature distributions.\n- Validate upstream data quality."
+
+
+        # ======================================================================
+        #                      DROPDOWN FOR EXPLANATION MODE
+        # ======================================================================
+
+        mode = st.selectbox(
+            "Choose explanation type:",
+            ["Layman Explanation", "Technical Explanation", "Premium Breakdown (Recommended)"]
+        )
+
+        # ======================================================================
+        #                     LAYMAN EXPLANATION (PREMIUM)
+        # ======================================================================
+
+        if mode == "Layman Explanation":
+            st.markdown("### 🟣 Layman Explanation\nHere’s what changed:")
+
+            for feature, score in sorted_items:
+                sev, icon = drift_severity(score)
+
+                with st.expander(f"{icon} {feature.replace('_', ' ').title()} — Changed by {score:.3f}"):
+                    st.markdown(
+                        f"""
+                        **What it means (simple):**  
+                        This part of your data has changed compared to the past.  
+                        The model was expecting something different before.
+
+                        **Severity:** {icon} **{sev} drift**
+                        """
+                    )
+
+        # ======================================================================
+        #                  TECHNICAL EXPLANATION (PREMIUM)
+        # ======================================================================
+
+        elif mode == "Technical Explanation":
+            st.markdown("### 🔵 Technical Explanation")
+
+            for feature, score in sorted_items:
+                sev, icon = drift_severity(score)
+
+                with st.expander(f"{icon} {feature} — drift={score:.4f}"):
+                    st.markdown(
+                        f"""
+                        - **Drift Score (PSI / distribution shift):** `{score:.4f}`
+                        - **Severity:** {icon} **{sev}**
+
+                        **PSI Interpretation:**
+                        - 0.00–0.10: Minor  
+                        - 0.10–0.25: Moderate  
+                        - >0.25: High drift (retrain recommended)
+                        """
+                    )
+
+        # ======================================================================
+        #           PREMIUM BREAKDOWN (BUSINESS + DEV SUGGESTIONS)
+        # ======================================================================
+
+        elif mode == "Premium Breakdown (Recommended)":
+            st.markdown("## ✨ PREMIUM DRIFT BREAKDOWN")
+
+            for feature, score in sorted_items:
+                sev, icon = drift_severity(score)
+
+                with st.expander(f"{icon} {feature.replace('_', ' ').title()} — {sev} Drift ({score:.3f})"):
+                    st.markdown(
+                        f"""
+                        ### {icon} Severity: **{sev}**
+
+                        #### 📉 What changed?
+                        The distribution of **{feature}** shifted by **{score:.3f}**, meaning the new data doesn't match what your model was trained on.
+
+                        #### 💼 Business Meaning
+                        {business_impact(feature, score)}
+
+                        #### 🛠 Developer Fix Suggestions
+                        {fix_suggestion(feature, score)}
+                        """
+                    )
+
+        # ======================================================================
+        #                 EXPORT CLEAN REPORT (TXT, DOCX, PDF)
+        # ======================================================================
+
+        st.markdown("### 📥 Download Full Drift Report")
+
+        download_format = st.selectbox("Format:", ["TXT", "DOCX", "PDF"])
+
+        report_text = "AI DRIFT RADAR REPORT\n=======================\n\n"
+
+        for feature, score in sorted_items:
+            sev, icon = drift_severity(score)
+            report_text += f"""
+        FEATURE: {feature}
+        DRIFT: {score:.4f}
+        SEVERITY: {sev}
+
+        BUSINESS IMPACT:
+        {business_impact(feature, score)}
+
+        FIX SUGGESTIONS:
+        {fix_suggestion(feature, score)}
+
+        --------------------------------------------
+        """
+
+        # Build files
+        from io import BytesIO
+        from docx import Document
+        from reportlab.platypus import SimpleDocTemplate, Paragraph
+        from reportlab.lib.styles import getSampleStyleSheet
+        from reportlab.lib.pagesizes import letter
+
+
+        def make_txt():
+            return report_text.encode("utf-8")
+
+
+        def make_docx():
+            doc = Document()
+            for line in report_text.split("\n"):
+                doc.add_paragraph(line)
+            buf = BytesIO()
+            doc.save(buf)
+            return buf.getvalue()
+
+
+        def make_pdf():
+            buf = BytesIO()
+            styles = getSampleStyleSheet()
+            story = [Paragraph(line, styles["Normal"]) for line in report_text.split("\n")]
+            SimpleDocTemplate(buf, pagesize=letter).build(story)
+            return buf.getvalue()
+
+
+        if download_format == "TXT":
+            st.download_button("⬇ Download TXT", make_txt(), "drift_report.txt")
+
+        elif download_format == "DOCX":
+            st.download_button("⬇ Download DOCX", make_docx(), "drift_report.docx")
 
         else:
-            st.warning("Could not compute drift for this dataset.")
-
-    st.markdown("</div></div>", unsafe_allow_html=True)
+            st.download_button("⬇ Download PDF", make_pdf(), "drift_report.pdf")
 
 # -----------------------------------------------
 # PAGE: Model Monitor (metrics + embeddings + retrain logic)
@@ -872,161 +1449,138 @@ curl -X POST https://your-system.com/webhook/retrain \\
     st.markdown("</div></div>", unsafe_allow_html=True)
 
 
-# ---------------------------
-# AI ASSISTANT (Memory, OOD detection, "layman" follow-ups)
-# Drop-in replacement for your existing Assistant block
-# ---------------------------
+# ---------------------------------------------------------
+# PAGE: AI ASSISTANT (FINAL FIXED VERSION)
+# ---------------------------------------------------------
 elif page == "AI Assistant":
-    st.markdown("<div class='main-container'><div class='app-card'>", unsafe_allow_html=True)
-    st.markdown("## 🤖 AI Drift Assistant — (context-aware)")
 
-    # initialize short memory
+    st.markdown("## 🤖 AI Drift Assistant (Context-Aware + Domain-Aware)")
+
+    # --- Initialize memory ---
     if "short_memory" not in st.session_state:
-        # each entry: {"role":"user"/"assistant", "content": "...", "time": iso}
         st.session_state.short_memory = []
+    if "domain" not in st.session_state:
+        st.session_state.domain = ""
 
-    # Helper: add to memory (keeps last N)
     def add_memory(role, content):
-        st.session_state.short_memory.append({"role": role, "content": content, "time": datetime.utcnow().isoformat()})
-        # limit memory length
-        if len(st.session_state.short_memory) > 12:
-            st.session_state.short_memory = st.session_state.short_memory[-12:]
+        st.session_state.short_memory.append({
+            "role": role,
+            "content": content,
+            "time": datetime.utcnow().isoformat()
+        })
+        st.session_state.short_memory = st.session_state.short_memory[-12:]
 
-    # System message that constrains behavior (used in sync calls)
-    SYSTEM_ASSISTANT_BRIEF = """
-You are AI Drift Radar — a specialized assistant for data/model drift detection, monitoring, metrics, embeddings, and MLOps integration.
-Constraints:
-- Answer only questions about drift, model monitoring, metrics, embeddings, retraining, and how to use the AI Drift Radar app.
-- If the user asks something clearly outside this scope (celebrity, sports trivia, general knowledge), reply:
-  "That question is outside my scope. I only help with drift, model monitoring, metrics, embeddings, and using this app."
-- When possible, provide two sections: (1) Inside the AI Drift Radar app — exact steps inside the UI, (2) For a real existing model — scripts / DB / cloud guidance.
-Tone: helpful, concise, actionable.
-"""
+    # --- If domain not set but drift results exist → infer automatically ---
+    if not st.session_state.domain and "last_drift" in st.session_state:
+        auto = infer_domain_from_data(st.session_state["last_drift"])
+        if auto:
+            st.session_state.domain = auto
+            add_memory("assistant", f"Domain automatically inferred as {auto} based on drift patterns.")
 
-    # Show domain banner if set
-    if st.session_state.get("domain"):
-        st.markdown(f"<div class='small'>**Domain:** <b>{st.session_state['domain']}</b></div>", unsafe_allow_html=True)
+    # --- Domain banner ---
+    if st.session_state.domain:
+        st.markdown(
+            f"<div class='small' style='margin-bottom:8px;'>"
+            f"Active Domain: <b>{st.session_state.domain}</b></div>",
+            unsafe_allow_html=True
+        )
     else:
-        st.markdown("<div class='small'>Please set your domain first (e.g., type 'ecommerce' or 'custom: airline').</div>", unsafe_allow_html=True)
+        st.markdown(
+            "<div class='small' style='margin-bottom:8px;'>"
+            "💡 Before starting, please type your domain (e.g., **ecommerce**, **finance**, or **custom: telecom**)."
+            "</div>",
+            unsafe_allow_html=True
+        )
 
-    # Render conversation from memory (instead of generic messages to keep a single source of truth)
+    # --- Render previous chat ---
     for turn in st.session_state.short_memory:
-        css = "chat-user" if turn["role"] == "user" else "chat-assistant"
-        st.markdown(f"<div class='{css}'>{turn['content']}</div>", unsafe_allow_html=True)
+        cls = "chat-user" if turn["role"] == "user" else "chat-assistant"
+        st.markdown(f"<div class='{cls}'>{turn['content']}</div>", unsafe_allow_html=True)
 
-    # Input placeholder depends on whether domain set
-    placeholder = "Start by typing your domain (example: ecommerce)" if not st.session_state.get("domain") else "Ask anything about drift, metrics, embeddings, retraining..."
+    placeholder_text = (
+        "Type your domain to begin (e.g., ecommerce)"
+        if not st.session_state.domain else
+        "Ask anything about drift, embeddings, metrics, agents or retraining"
+    )
+    user_input = st.chat_input(placeholder_text)
 
-    user_input = st.chat_input(placeholder)
-
-    # small helper: simple keyword OOD fallback classifier
+    # ---------------------------
+    #     UTILITY FUNCTIONS
+    # ---------------------------
     def heuristic_is_ood(text):
-        text = (text or "").lower()
-        # common non-drift triggers (names, trivia, sports)
-        non_drift_signals = ["who is", "who's", "what is the capital", "virat", "cricket", "bollywood", "who won", "weather", "news", "song", "lyrics"]
-        if any(s in text for s in non_drift_signals):
-            return True
-        # if message is one short word like hi/hello -> not OOD, but domain detection handles it
-        return False
-
-    # Intent helper: check if user wants simplification / layman
-    def wants_layman(text):
-        if not text: return False
         t = text.lower()
-        return any(kw in t for kw in ["layman", "simple", "in simple terms", "explain simply", "explain like i'm", "dumb it down", "in layman"])
+        ood = ["who is", "virat", "movie", "song", "weather", "capital", "president"]
+        return any(x in t for x in ood)
 
-    # Function: classify whether query is in-scope using LLM (preferred) or heuristic fallback
-    def classify_scope_with_llm(question):
-        # ask groq to say IN_SCOPE or OUT_OF_SCOPE (short)
-        if groq_client is None:
-            # fallback
-            return not heuristic_is_ood(question)
-        prompt = f"""Question: {question}
+    def wants_simplify(text):
+        t = text.lower()
+        return any(x in t for x in ["layman", "simple", "explain simply", "explain like"])
 
-Task: Is this question within the scope of "data/model drift detection, model monitoring, metrics, embeddings, retraining, or how to use the AI Drift Radar app"? 
-Respond only with one word: IN_SCOPE or OUT_OF_SCOPE, then a one-line reason."""
-        res = groq_complete_sync(prompt, st.session_state.get("domain","unspecified"))
-        if not res:
-            return True
-        r = res.strip().upper()
-        if r.startswith("OUT_OF_SCOPE") or "OUT_OF_SCOPE" in r or r.startswith("NO"):
-            return False
-        if r.startswith("IN_SCOPE") or "IN_SCOPE" in r or r.startswith("YES"):
-            return True
-        # fallback: check presence of keywords
-        return not heuristic_is_ood(question)
-
-    # If user typed something
+    # ---------------------------
+    #     ON USER INPUT
+    # ---------------------------
     if user_input:
         add_memory("user", user_input)
 
-        # 1) If domain not set yet, try to resolve domain
-        if not st.session_state.get("domain"):
+        # 1) Domain setup before anything else
+        if not st.session_state.domain:
             detected = resolve_domain(user_input)
             if detected:
                 st.session_state.domain = detected
-                add_memory("assistant", f"Domain set to **{detected}**. Ask me anything about drift in that domain.")
+                add_memory("assistant", f"✔ Domain set to **{detected}**. Now ask me drift/model questions.")
                 st.experimental_rerun()
             else:
-                add_memory("assistant", "I couldn't detect a domain. Please type a domain (e.g., ecommerce) or 'custom: <name>'.")
+                add_memory("assistant", "❗ I couldn't detect your domain. Please type `ecommerce`, `finance`, or `custom: <name>`.")
                 st.experimental_rerun()
 
-        # 2) Handle layman simplification or rephrase of last assistant reply
-        if wants_layman(user_input):
-            # find last assistant reply
-            last_assistant = None
-            for t in reversed(st.session_state.short_memory):
-                if t["role"] == "assistant":
-                    last_assistant = t["content"]
-                    break
+        # 2) User asked “explain in simple terms”
+        if wants_simplify(user_input):
+            # find last assistant message
+            last_assistant = next(
+                (m["content"] for m in reversed(st.session_state.short_memory) if m["role"] == "assistant"),
+                None
+            )
             if not last_assistant:
-                reply = "I don't have a previous explanation to simplify. Ask a question first and then say 'explain in layman terms'."
-                add_memory("assistant", reply)
+                add_memory("assistant", "I don’t have a previous explanation to simplify.")
                 st.experimental_rerun()
-            # ask Groq to simplify previous assistant response
-            simplify_prompt = f"Please rewrite the following text in very simple, non-technical terms (two short paragraphs):\n\n{last_assistant}\n\nKeep domain: {st.session_state.get('domain','unspecified')}."
-            if groq_client:
-                placeholder = st.empty()
-                placeholder.markdown("Assistant is simplifying...")
-                simple = groq_complete_sync(simplify_prompt, st.session_state.get("domain","unspecified"))
-                placeholder.empty()
-            else:
-                # fallback: very basic naive simplification (short)
-                simple = "Simple explanation: " + (last_assistant[:800] + ("..." if len(last_assistant) > 800 else ""))
+
+            prompt = f"Simplify the following into easy layman terms:\n\n{last_assistant}"
+            simple = groq_complete_sync(prompt, st.session_state.domain)
             add_memory("assistant", simple)
             st.experimental_rerun()
 
-        # 3) Classify scope (IN / OUT)
-        in_scope = classify_scope_with_llm(user_input)
-
-        if not in_scope:
-            reply = ("That question looks outside my scope. I only help with model/data drift, monitoring, metrics, embeddings, and how to use this app. "
-                     "If you meant something related to drift or ML, please rephrase. For other general questions, please use a general LLM.")
-            add_memory("assistant", reply)
+        # 3) Out-of-Domain queries blocked
+        if heuristic_is_ood(user_input):
+            add_memory(
+                "assistant",
+                "❌ This question is outside drift/model monitoring. Ask about drift, metrics, embeddings, or retraining."
+            )
             st.experimental_rerun()
 
-        # 4) Now handle intent: simple vs analysis
-        q = user_input.lower()
-        analysis_keywords = ["drift", "psi", "embedding", "metric", "retrain", "retraining", "degrade", "analysis", "why", "explain"]
-        needs_agents = any(k in q for k in analysis_keywords)
+        # 4) Multi-agent analysis triggers
+        triggers = ["drift", "psi", "embedding", "retrain", "degrade", "metrics", "analysis", "why"]
+        needs_agents = any(t in user_input.lower() for t in triggers)
 
-        domain = st.session_state.get("domain", "unspecified")
+        domain = st.session_state.domain
+        history = "\n".join([f"{m['role'].upper()}: {m['content']}" for m in st.session_state.short_memory[-8:]])
+        drift_context = st.session_state.get("last_drift", {})
 
-        # Build context from short memory (last few turns) for the LLM
-        history_snippet = "\n".join([f"{m['role'].upper()}: {m['content']}" for m in st.session_state.short_memory[-8:]])
+        # ---------------------------
+        # MULTI-AGENT MODE
+        # ---------------------------
+        if needs_agents:
+            st.info("🔎 Running multi-agent analysis...")
 
-        # 5) If it's analysis-intent → run multi-agent pipeline (synthesizer)
-        if needs_agents and groq_client:
-            placeholder = st.empty()
-            placeholder.markdown("Running analysis agents and synthesizing results...")
-            # Drift Analyst
-            da = agent_drift_analyst(history_snippet, domain)
-            dq = agent_data_quality("reference sample not provided", "current sample not provided", domain)
-            bi = agent_business_impact(history_snippet, domain)
-            ra = agent_retrain_advisor(history_snippet, domain)
-            oi = agent_ops_integration(history_snippet, domain)
-            synth_prompt = f"""You are the synthesizer assistant for AI Drift Radar (domain: {domain}).
-User question: {user_input}
+            da = agent_drift_analyst(history, domain)
+            dq = agent_data_quality("reference", "current", domain)
+            bi = agent_business_impact(history, domain)
+            ra = agent_retrain_advisor(history, domain)
+            oi = agent_ops_integration(history, domain)
+
+            combined = f"""
+Domain: {domain}
+Latest drift: {drift_context}
+User: {user_input}
 
 Drift Analyst:
 {da}
@@ -1043,68 +1597,43 @@ Retrain Advisor:
 Ops Integration:
 {oi}
 
-Task: Produce:
-1) Two-line summary
-2) 4 prioritized actions (short)
-3) Developer checklist (3 items)
-Answer concisely.
+Synthesize the above into:
+1) A two-line summary.
+2) Four recommended actions.
+3) A developer checklist.
 """
-            final = groq_complete_sync(synth_prompt, domain)
+            final = groq_complete_sync(combined, domain)
             add_memory("assistant", final)
-            placeholder.empty()
             st.experimental_rerun()
 
-        # 6) For simple tasks, use a constrained system prompt that gives the two-section (App / Real system) format
-        simple_prompt = f"""{SYSTEM_ASSISTANT_BRIEF}
+        # ---------------------------
+        # NORMAL LLM REPLY
+        # ---------------------------
+        sys_prompt = f"""
+You are AI Drift Radar Assistant.
+Your rules:
+- Only answer questions related to drift, embeddings, metrics, model degradation, retraining, or using this app.
+- If outside topic → politely decline.
+- Keep responses concise & structured.
 
 Domain: {domain}
-
-Context (recent conversation):
-{history_snippet}
-
-User request:
-{user_input}
-
-Respond with two labeled sections:
-1) Inside the AI Drift Radar app: step-by-step how to perform the requested action inside the UI.
-2) For a real existing model (local/server/cloud): step-by-step scripts or commands.
-Keep answers short and actionable.
+Recent context:
+{history}
+Last drift:
+{drift_context}
 """
-        # prefer streaming if available
-        if groq_client:
-            placeholder = st.empty()
-            placeholder.markdown("Assistant is typing...")
-            try:
-                stream = groq_client.chat.completions.create(
-                    model="llama-3.1-8b-instant",
-                    temperature=0.15,
-                    messages=[{"role":"system","content":simple_prompt},{"role":"user","content":user_input}],
-                    stream=True
-                )
-                full = ""
-                for chunk in stream:
-                    token = _extract_token(chunk)
-                    if token:
-                        full += token
-                        placeholder.markdown(full)
-                assistant_text = full or "Sorry — I couldn't produce an answer."
-            except Exception as e:
-                assistant_text = f"Groq error: {e}"
-            placeholder.empty()
-        else:
-            # fallback: short canned guidance if no LLM
-            assistant_text = ("1) Inside the app: go to Sample Data -> generate or Upload & Analyze -> upload reference & current -> click Generate explanation.\n\n"
-                              "2) Real system: export CSV with df.to_csv('current.csv'), use SQL to filter by dates, upload to this app or process locally.")
-        add_memory("assistant", assistant_text)
+
+        reply = groq_complete_sync(f"{sys_prompt}\nUser: {user_input}", domain)
+        add_memory("assistant", reply)
         st.experimental_rerun()
 
-    # Clear chat button
+    # ---------------------------
+    # CLEAR CHAT BUTTON
+    # ---------------------------
     if st.button("🧹 Clear Chat"):
         st.session_state.short_memory = []
         st.session_state.domain = ""
         st.experimental_rerun()
-
-    st.markdown("</div></div>", unsafe_allow_html=True)
 
 
 # -----------------------------------------------
@@ -1124,7 +1653,6 @@ elif page == "About":
     - **Metrics.json model performance integration**
     - **PDF/DOCX/TXT auto-report generator**
     - **Sample Data Engine** (10 domains)
-    - **Claude-style chat UI**
 
     Designed for:
     - ML engineers  
