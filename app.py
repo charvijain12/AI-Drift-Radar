@@ -87,36 +87,56 @@ st.markdown("""
   align-self: flex-start;
   border-left: 4px solid #d6b8ff;
 }
-.header { font-size: 28px; font-weight: 700; margin-bottom: 6px; }
-.sub { color: #555; margin-bottom: 12px; }
-.small { font-size: 13px; color: #666; }
+/* Header and text styles */
+.header { 
+  font-size: 28px; 
+  font-weight: 700; 
+  margin-bottom: 6px; 
+}
+.sub { 
+  color: #555; 
+  margin-bottom: 12px; 
+}
+.small { 
+  font-size: 13px; 
+  color: #666; 
+}
 
-/* Flip-card grid */
+/* Grid for flip-cards */
 .flip-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); /* Automatically adjust the grid */
   gap: 20px;
   margin-top: 12px;
 }
 
+/* Flip-card style */
 .flip-card {
   perspective: 1200px;
-  width: 100%;
-  height: 160px;
+  width: 80%;  /* Let the card take full width of the grid container */
+  height: 200px; /* Set a height suitable for your content */
 }
+
+/* Flip-card inner container */
 .flip-card-inner {
   position: relative;
-  width: 100%;
+  width: 80%;
   height: 100%;
   transition: transform 0.6s;
   transform-style: preserve-3d;
 }
+
+/* Hover effect for flipping */
 .flip-card:hover .flip-card-inner {
   transform: rotateY(180deg);
 }
-/* fallback for touch devices */
-.flip-card:active .flip-card-inner { transform: rotateY(180deg); }
 
+/* Fallback for touch devices */
+.flip-card:active .flip-card-inner { 
+  transform: rotateY(180deg); 
+}
+
+/* Front and back of the flip-card */
 .flip-card-front, .flip-card-back {
   position: absolute;
   width: 100%;
@@ -125,15 +145,40 @@ st.markdown("""
   backface-visibility: hidden;
   border-radius: 10px;
   padding: 16px;
-  box-shadow: 0 6px 18px rgba(20,20,50,0.04);
+  box-shadow: 0 6px 18px rgba(20, 20, 50, 0.04);
 }
+
+/* Front of the card with gradient background */
 .flip-card-front {
   background: linear-gradient(180deg, #ffffff, #f7f9ff);
 }
+
+/* Back of the card with different gradient */
 .flip-card-back {
   background: linear-gradient(180deg, #fff8f0, #fff);
   transform: rotateY(180deg);
 }
+
+/* Button and download styles */
+.stButton>button {
+  background: linear-gradient(90deg, #e6e6ff, #fff8e6);
+  border: 1px solid #d7c9ff;
+  border-radius: 8px;
+  color: #111;
+  font-weight: 600;
+}
+
+/* Responsive layout adjustments */
+@media (max-width: 900px) {
+  .app-card { 
+    width: 94%; 
+    padding: 14px; 
+  }
+  .flip-card { 
+    height: 150px; 
+  }
+}
+
 
 /* buttons and download */
 .stButton>button {
@@ -171,17 +216,18 @@ if "agents_enabled" not in st.session_state:
 # ---------------------------
 # Map many user inputs to canonical domain names
 DOMAIN_CANONICAL = {
-    "e-commerce": ["ecommerce","e-commerce","ecom","online retail","shopping","retail"],
-    "finance": ["finance","banking","payments","transactions","fin"],
-    "healthcare": ["healthcare","medical","health","clinic","hospital"],
-    "manufacturing": ["manufacturing","factory","industrial","production"],
-    "saas": ["saas","software","software-as-a-service","web app"],
-    "logistics": ["logistics","delivery","shipping","transport"],
-    "edtech": ["edtech","education","learning","school","university"],
-    "retail-offline": ["retail-offline","offline retail","brick and mortar","store"],
-    "insurance": ["insurance","claims","insurer"],
-    "energy-iot": ["energy","iot","sensor","meter","energy-iot"]
+    "e-commerce": ["ecommerce", "e-commerce", "ecom", "online retail", "shopping", "retail"],
+    "finance": ["finance", "banking", "payments", "transactions", "fin"],
+    "healthcare": ["healthcare", "medical", "health", "clinic", "hospital"],
+    "manufacturing": ["manufacturing", "factory", "industrial", "production"],
+    "saas": ["saas", "software", "software-as-a-service", "web app"],
+    "logistics": ["logistics", "delivery", "shipping", "transport"],
+    "edtech": ["edtech", "education", "learning", "school", "university"],
+    "retail-offline": ["retail-offline", "offline retail", "brick and mortar", "store"],
+    "insurance": ["insurance", "claims", "insurer"],
+    "energy-iot": ["energy", "iot", "sensor", "meter", "energy-iot"]
 }
+
 
 # ---------------------------
 # SMART DOMAIN RESOLVER (DROP-IN)
@@ -192,29 +238,29 @@ def resolve_domain(text):
     txt = text.lower().strip()
 
     # common greetings / short non-domain words to ignore
-    invalid = {"hi","hello","hey","yo","help","start","run","run analysis","thanks","thx"}
+    invalid = {"hi", "hello", "hey", "yo", "help", "start", "run", "run analysis", "thanks", "thx"}
     if txt in invalid:
         return None
 
     # custom domain detection: "custom: airline" or "custom - airline"
     if txt.startswith("custom:") or txt.startswith("custom -"):
-        parts = txt.split(":",1) if ":" in txt else txt.split("-",1)
+        parts = txt.split(":", 1) if ":" in txt else txt.split("-", 1)
         if len(parts) > 1 and parts[1].strip():
             return parts[1].strip().title()
         return "Custom"
 
     # fuzzy mapping of common aliases -> canonical domain names
     mapping = {
-        "E-commerce": ["ecom","e-commerce","e commerce","online retail","shopping","retail"],
-        "Finance": ["finance","fin","banking","payments","transactions","fintech"],
-        "Healthcare": ["healthcare","medical","health","clinic","hospital","med"],
-        "Manufacturing": ["manufacturing","factory","industrial","production"],
-        "SaaS": ["saas","software","software-as-a-service","web app","subscription"],
-        "Logistics": ["logistics","delivery","shipping","transport","supply chain"],
-        "EdTech": ["edtech","education","learning","school","university"],
-        "Retail-Offline": ["retail-offline","offline retail","store","brick and mortar"],
-        "Insurance": ["insurance","claims","insurer","policy"],
-        "Energy-IoT": ["energy","iot","meter","smart meter","power","grid"]
+        "E-commerce": ["ecom", "e-commerce", "e commerce", "online retail", "shopping", "retail"],
+        "Finance": ["finance", "fin", "banking", "payments", "transactions", "fintech"],
+        "Healthcare": ["healthcare", "medical", "health", "clinic", "hospital", "med"],
+        "Manufacturing": ["manufacturing", "factory", "industrial", "production"],
+        "SaaS": ["saas", "software", "software-as-a-service", "web app", "subscription"],
+        "Logistics": ["logistics", "delivery", "shipping", "transport", "supply chain"],
+        "EdTech": ["edtech", "education", "learning", "school", "university"],
+        "Retail-Offline": ["retail-offline", "offline retail", "store", "brick and mortar"],
+        "Insurance": ["insurance", "claims", "insurer", "policy"],
+        "Energy-IoT": ["energy", "iot", "meter", "smart meter", "power", "grid"]
     }
 
     # exact or alias match
@@ -227,7 +273,7 @@ def resolve_domain(text):
 
     # substring match for canonical with spaces
     for canonical in mapping:
-        if canonical.replace("-"," ").lower() in txt:
+        if canonical.replace("-", " ").lower() in txt:
             return canonical
 
     # fallback: short single-word input -> title-cased domain
@@ -235,7 +281,6 @@ def resolve_domain(text):
         return txt.title()
 
     return None
-
 
 
 # ---------------------------
@@ -255,11 +300,13 @@ def compute_psi_for_column(ref_series: pd.Series, cur_series: pd.Series, buckets
     except Exception:
         return None
 
+
 def compute_categorical_delta_for_column(ref_series: pd.Series, cur_series: pd.Series):
     try:
         return categorical_delta(ref_series.fillna(""), cur_series.fillna(""))
     except Exception:
         return None
+
 
 # ---------------------------
 # Embedding helpers
@@ -278,6 +325,7 @@ def mean_cosine_embedding_shift(ref_emb: np.ndarray, cur_emb: np.ndarray) -> flo
     except Exception:
         return 0.0
 
+
 # ---------------------------
 # Groq safe helpers (token extraction & sync)
 # ---------------------------
@@ -290,6 +338,7 @@ Rules:
 Tone: helpful, concise, actionable.
 """
 
+
 def _extract_token(chunk):
     try:
         choice = chunk.choices[0]
@@ -297,10 +346,11 @@ def _extract_token(chunk):
         if delta and getattr(delta, "content", None):
             return delta.content
         if isinstance(delta, dict):
-            return delta.get("content","") or ""
+            return delta.get("content", "") or ""
     except Exception:
         pass
     return ""
+
 
 def stream_groq_answer(user_msg: str, domain: str, placeholder) -> str:
     if groq_client is None:
@@ -310,7 +360,7 @@ def stream_groq_answer(user_msg: str, domain: str, placeholder) -> str:
         stream = groq_client.chat.completions.create(
             model="llama-3.1-8b-instant",
             temperature=0.2,
-            messages=[{"role":"system","content":system_prompt}, {"role":"user","content":user_msg}],
+            messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_msg}],
             stream=True
         )
     except Exception as e:
@@ -323,7 +373,8 @@ def stream_groq_answer(user_msg: str, domain: str, placeholder) -> str:
             placeholder.markdown(full)
     return full
 
-def groq_complete_sync(prompt: str, domain: str, temperature: float=0.2) -> str:
+
+def groq_complete_sync(prompt: str, domain: str, temperature: float = 0.2) -> str:
     if groq_client is None:
         return "Assistant disabled (no GROQ key)."
     system_prompt = SYSTEM_PROMPT_TEMPLATE.format(domain=domain or "unspecified")
@@ -331,7 +382,7 @@ def groq_complete_sync(prompt: str, domain: str, temperature: float=0.2) -> str:
         res = groq_client.chat.completions.create(
             model="llama-3.1-8b-instant",
             temperature=temperature,
-            messages=[{"role":"system","content":system_prompt}, {"role":"user","content":prompt}],
+            messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": prompt}],
             stream=False
         )
         # safest access
@@ -345,6 +396,7 @@ def groq_complete_sync(prompt: str, domain: str, temperature: float=0.2) -> str:
     except Exception as e:
         return f"Groq API error: {e}"
 
+
 # ---------------------------
 # Agent shells (sync wrappers use groq_complete_sync)
 # ---------------------------
@@ -352,31 +404,37 @@ def agent_drift_analyst(summary: str, domain: str) -> str:
     prompt = f"You are the Drift Analyst agent. Input summary:\\n{summary}\\nTask: Explain top drift features, quick checks, and numeric top-3."
     return groq_complete_sync(prompt, domain)
 
+
 def agent_data_quality(ref_sample: str, cur_sample: str, domain: str) -> str:
     prompt = f"You are the Data Quality agent. Ref sample:\\n{ref_sample}\\nCur sample:\\n{cur_sample}\\nTask: List quality issues and quick fixes."
     return groq_complete_sync(prompt, domain)
+
 
 def agent_business_impact(summary: str, domain: str) -> str:
     prompt = f"You are the Business Impact agent. Summary:\\n{summary}\\nTask: Explain business impact and priority."
     return groq_complete_sync(prompt, domain)
 
+
 def agent_retrain_advisor(summary: str, domain: str) -> str:
     prompt = f"You are the Retrain Advisor agent. Summary:\\n{summary}\\nTask: Recommend retraining strategy and exact next steps (commands/pseudocode)."
     return groq_complete_sync(prompt, domain)
 
+
 def agent_ops_integration(summary: str, domain: str) -> str:
     prompt = f"You are the Ops Integration agent. Summary:\\n{summary}\\nTask: Provide webhook payload, cURL, and monitoring checklist."
     return groq_complete_sync(prompt, domain)
+
 
 # ---------------------------
 # Reporting helpers (TXT/DOCX/PDF)
 # ---------------------------
 def make_txt(drift_scores: dict, explanation: str) -> bytes:
     lines = ["AI Drift Radar Report", f"Generated: {datetime.utcnow().isoformat()} UTC", "", "Drift Scores:"]
-    for k,v in drift_scores.items():
+    for k, v in drift_scores.items():
         lines.append(f"{k}: {v}")
     lines.extend(["", "Explanation:", explanation])
     return "\n".join(lines).encode("utf-8")
+
 
 def make_docx(drift_scores: dict, explanation: str) -> io.BytesIO:
     if Document is None:
@@ -385,7 +443,7 @@ def make_docx(drift_scores: dict, explanation: str) -> io.BytesIO:
     doc.add_heading("AI Drift Radar Report", level=1)
     doc.add_paragraph(f"Generated: {datetime.utcnow().isoformat()} UTC")
     doc.add_heading("Drift Scores", level=2)
-    for k,v in drift_scores.items():
+    for k, v in drift_scores.items():
         doc.add_paragraph(f"{k}: {v}")
     doc.add_heading("Explanation", level=2)
     doc.add_paragraph(explanation)
@@ -394,25 +452,27 @@ def make_docx(drift_scores: dict, explanation: str) -> io.BytesIO:
     bio.seek(0)
     return bio
 
+
 def make_pdf(drift_scores: dict, explanation: str) -> io.BytesIO:
     if SimpleDocTemplate is None:
         raise RuntimeError("reportlab not installed")
     bio = io.BytesIO()
     doc = SimpleDocTemplate(bio)
     styles = getSampleStyleSheet()
-    story = [Paragraph("AI Drift Radar Report", styles["Title"]), Spacer(1,8),
-             Paragraph(f"Generated: {datetime.utcnow().isoformat()} UTC", styles["Normal"]), Spacer(1,12),
+    story = [Paragraph("AI Drift Radar Report", styles["Title"]), Spacer(1, 8),
+             Paragraph(f"Generated: {datetime.utcnow().isoformat()} UTC", styles["Normal"]), Spacer(1, 12),
              Paragraph("Drift Scores:", styles["Heading2"])]
-    for k,v in drift_scores.items():
+    for k, v in drift_scores.items():
         story.append(Paragraph(f"{k}: {v}", styles["Normal"]))
-    story.append(Spacer(1,12))
+    story.append(Spacer(1, 12))
     story.append(Paragraph("Explanation:", styles["Heading2"]))
     for para in explanation.split("\n\n"):
-        story.append(Paragraph(para.replace("\n","<br/>"), styles["Normal"]))
-        story.append(Spacer(1,6))
+        story.append(Paragraph(para.replace("\n", "<br/>"), styles["Normal"]))
+        story.append(Spacer(1, 6))
     doc.build(story)
     bio.seek(0)
     return bio
+
 
 # ---------------------------
 # Sample generator helpers (returns two CSV bytes)
@@ -422,63 +482,93 @@ DOMAINS = [
     "Logistics", "EdTech", "Retail-Offline", "Insurance", "Energy-IoT"
 ]
 
+
 def generate_sample_pair(domain: str, n_rows: int = 20000, seasonal_keyword: Optional[str] = None):
     rng = np.random.default_rng(12345)
     base_time = datetime.utcnow() - timedelta(days=90)
     ref_rows, cur_rows = [], []
     for i in range(n_rows):
-        ts_ref = base_time + timedelta(minutes=int(rng.integers(0, 60*24*60)))
-        ts_cur = datetime.utcnow() - timedelta(minutes=int(rng.integers(0, 60*24*7)))
+        ts_ref = base_time + timedelta(minutes=int(rng.integers(0, 60 * 24 * 60)))
+        ts_cur = datetime.utcnow() - timedelta(minutes=int(rng.integers(0, 60 * 24 * 7)))
         if domain.lower().startswith("e"):
-            cats = ["Mobile","Home","Fashion","Grocery","Books"]
+            cats = ["Mobile", "Home", "Fashion", "Grocery", "Books"]
             cat_ref = rng.choice(cats)
-            query_ref = rng.choice(["best price","buy online","top rated"])
+            query_ref = rng.choice(["best price", "buy online", "top rated"])
             purchased_ref = int(rng.random() < 0.08)
             if seasonal_keyword and rng.random() < 0.45:
                 cat_cur = seasonal_keyword + " Specials"
-                query_cur = f"{seasonal_keyword} {rng.choice(['sale','offers','gift'])}"
+                query_cur = f"{seasonal_keyword} {rng.choice(['sale', 'offers', 'gift'])}"
                 purchased_cur = int(rng.random() < 0.30)
             else:
                 cat_cur = rng.choice(cats)
-                query_cur = rng.choice(["best price","discount"])
+                query_cur = rng.choice(["best price", "discount"])
                 purchased_cur = int(rng.random() < 0.09)
-            ref_rows.append({"timestamp": ts_ref.isoformat(sep=' '), "category": cat_ref, "query": query_ref, "session_sec": int(abs(rng.normal(180,60))), "purchased": purchased_ref})
-            cur_rows.append({"timestamp": ts_cur.isoformat(sep=' '), "category": cat_cur, "query": query_cur, "session_sec": int(abs(rng.normal(220,80))), "purchased": purchased_cur})
+            ref_rows.append({"timestamp": ts_ref.isoformat(sep=' '), "category": cat_ref, "query": query_ref,
+                             "session_sec": int(abs(rng.normal(180, 60))), "purchased": purchased_ref})
+            cur_rows.append({"timestamp": ts_cur.isoformat(sep=' '), "category": cat_cur, "query": query_cur,
+                             "session_sec": int(abs(rng.normal(220, 80))), "purchased": purchased_cur})
         elif domain.lower().startswith("f"):
             # finance
-            ref_rows.append({"timestamp": ts_ref.isoformat(sep=' '), "acct_age_days": int(abs(rng.normal(400,250))), "tx_amount": round(abs(rng.normal(150,400)),2), "tx_type": rng.choice(["payment","transfer"]), "is_fraud": int(rng.random() < 0.01)})
-            cur_rows.append({"timestamp": ts_cur.isoformat(sep=' '), "acct_age_days": int(abs(rng.normal(380,260))), "tx_amount": round(abs(rng.normal(160,500)),2), "tx_type": rng.choice(["payment","transfer","refund"]), "is_fraud": int(rng.random() < 0.012)})
+            ref_rows.append({"timestamp": ts_ref.isoformat(sep=' '), "acct_age_days": int(abs(rng.normal(400, 250))),
+                             "tx_amount": round(abs(rng.normal(150, 400)), 2),
+                             "tx_type": rng.choice(["payment", "transfer"]), "is_fraud": int(rng.random() < 0.01)})
+            cur_rows.append({"timestamp": ts_cur.isoformat(sep=' '), "acct_age_days": int(abs(rng.normal(380, 260))),
+                             "tx_amount": round(abs(rng.normal(160, 500)), 2),
+                             "tx_type": rng.choice(["payment", "transfer", "refund"]),
+                             "is_fraud": int(rng.random() < 0.012)})
         elif domain.lower().startswith("h"):
-            ref_rows.append({"timestamp": ts_ref.isoformat(sep=' '), "age": int(abs(rng.normal(50,18))), "glucose": round(abs(rng.normal(95,18)),1), "wbc": round(abs(rng.normal(6,1.5)),2)})
-            cur_rows.append({"timestamp": ts_cur.isoformat(sep=' '), "age": int(abs(rng.normal(51,19))), "glucose": round(abs(rng.normal(100,25)),1), "wbc": round(abs(rng.normal(6.2,1.6)),2)})
+            ref_rows.append({"timestamp": ts_ref.isoformat(sep=' '), "age": int(abs(rng.normal(50, 18))),
+                             "glucose": round(abs(rng.normal(95, 18)), 1), "wbc": round(abs(rng.normal(6, 1.5)), 2)})
+            cur_rows.append({"timestamp": ts_cur.isoformat(sep=' '), "age": int(abs(rng.normal(51, 19))),
+                             "glucose": round(abs(rng.normal(100, 25)), 1), "wbc": round(abs(rng.normal(6.2, 1.6)), 2)})
         elif domain.lower().startswith("m"):
-            ref_rows.append({"timestamp": ts_ref.isoformat(sep=' '), "sensor_temp": round(50 + rng.normal(0,4),2), "vibration": round(abs(rng.normal(0.3,0.08)),3), "status": rng.choice(["ok","warning"])})
-            cur_rows.append({"timestamp": ts_cur.isoformat(sep=' '), "sensor_temp": round(50 + rng.normal(1,5),2), "vibration": round(abs(rng.normal(0.45,0.12)),3), "status": rng.choice(["ok","warning","fail"])})
+            ref_rows.append({"timestamp": ts_ref.isoformat(sep=' '), "sensor_temp": round(50 + rng.normal(0, 4), 2),
+                             "vibration": round(abs(rng.normal(0.3, 0.08)), 3),
+                             "status": rng.choice(["ok", "warning"])})
+            cur_rows.append({"timestamp": ts_cur.isoformat(sep=' '), "sensor_temp": round(50 + rng.normal(1, 5), 2),
+                             "vibration": round(abs(rng.normal(0.45, 0.12)), 3),
+                             "status": rng.choice(["ok", "warning", "fail"])})
         elif domain.lower().startswith("s"):
-            ref_rows.append({"timestamp": ts_ref.isoformat(sep=' '), "user_id": rng.integers(1000,9999), "active_sec": int(abs(rng.normal(600,300))), "events": int(abs(rng.normal(10,6)))})
-            cur_rows.append({"timestamp": ts_cur.isoformat(sep=' '), "user_id": rng.integers(1000,9999), "active_sec": int(abs(rng.normal(700,350))), "events": int(abs(rng.normal(14,8)))})
+            ref_rows.append({"timestamp": ts_ref.isoformat(sep=' '), "user_id": rng.integers(1000, 9999),
+                             "active_sec": int(abs(rng.normal(600, 300))), "events": int(abs(rng.normal(10, 6)))})
+            cur_rows.append({"timestamp": ts_cur.isoformat(sep=' '), "user_id": rng.integers(1000, 9999),
+                             "active_sec": int(abs(rng.normal(700, 350))), "events": int(abs(rng.normal(14, 8)))})
         elif domain.lower().startswith("l"):
-            ref_rows.append({"timestamp": ts_ref.isoformat(sep=' '), "route": rng.integers(1,100), "duration_min": int(abs(rng.normal(50,30))), "delay": int(abs(rng.normal(5,10)))})
-            cur_rows.append({"timestamp": ts_cur.isoformat(sep=' '), "route": rng.integers(1,100), "duration_min": int(abs(rng.normal(60,40))), "delay": int(abs(rng.normal(10,20)))})
+            ref_rows.append({"timestamp": ts_ref.isoformat(sep=' '), "route": rng.integers(1, 100),
+                             "duration_min": int(abs(rng.normal(50, 30))), "delay": int(abs(rng.normal(5, 10)))})
+            cur_rows.append({"timestamp": ts_cur.isoformat(sep=' '), "route": rng.integers(1, 100),
+                             "duration_min": int(abs(rng.normal(60, 40))), "delay": int(abs(rng.normal(10, 20)))})
         elif domain.lower().startswith("e") and "ed" in domain.lower():
-            ref_rows.append({"timestamp": ts_ref.isoformat(sep=' '), "student_id": rng.integers(1000,9999), "time_min": int(abs(rng.normal(30,20))), "completed": int(rng.random() < 0.12)})
-            cur_rows.append({"timestamp": ts_cur.isoformat(sep=' '), "student_id": rng.integers(1000,9999), "time_min": int(abs(rng.normal(40,25))), "completed": int(rng.random() < 0.08)})
+            ref_rows.append({"timestamp": ts_ref.isoformat(sep=' '), "student_id": rng.integers(1000, 9999),
+                             "time_min": int(abs(rng.normal(30, 20))), "completed": int(rng.random() < 0.12)})
+            cur_rows.append({"timestamp": ts_cur.isoformat(sep=' '), "student_id": rng.integers(1000, 9999),
+                             "time_min": int(abs(rng.normal(40, 25))), "completed": int(rng.random() < 0.08)})
         elif domain.lower().startswith("r"):
-            ref_rows.append({"timestamp": ts_ref.isoformat(sep=' '), "store_id": rng.integers(1,200), "footfall": int(abs(rng.normal(120,60))), "sales": round(abs(rng.normal(2000,1500)),2)})
-            cur_rows.append({"timestamp": ts_cur.isoformat(sep=' '), "store_id": rng.integers(1,200), "footfall": int(abs(rng.normal(150,80))), "sales": round(abs(rng.normal(2500,1600)),2)})
+            ref_rows.append({"timestamp": ts_ref.isoformat(sep=' '), "store_id": rng.integers(1, 200),
+                             "footfall": int(abs(rng.normal(120, 60))), "sales": round(abs(rng.normal(2000, 1500)), 2)})
+            cur_rows.append({"timestamp": ts_cur.isoformat(sep=' '), "store_id": rng.integers(1, 200),
+                             "footfall": int(abs(rng.normal(150, 80))), "sales": round(abs(rng.normal(2500, 1600)), 2)})
         elif domain.lower().startswith("i"):
-            ref_rows.append({"timestamp": ts_ref.isoformat(sep=' '), "claim_amount": round(abs(rng.normal(4000,1800)),2), "claim_type": rng.choice(["auto","health"]), "fraud_score": round(rng.random(),3)})
-            cur_rows.append({"timestamp": ts_cur.isoformat(sep=' '), "claim_amount": round(abs(rng.normal(4200,2000)),2), "claim_type": rng.choice(["auto","health","property"]), "fraud_score": round(rng.random(),3)})
+            ref_rows.append(
+                {"timestamp": ts_ref.isoformat(sep=' '), "claim_amount": round(abs(rng.normal(4000, 1800)), 2),
+                 "claim_type": rng.choice(["auto", "health"]), "fraud_score": round(rng.random(), 3)})
+            cur_rows.append(
+                {"timestamp": ts_cur.isoformat(sep=' '), "claim_amount": round(abs(rng.normal(4200, 2000)), 2),
+                 "claim_type": rng.choice(["auto", "health", "property"]), "fraud_score": round(rng.random(), 3)})
         elif domain.lower().startswith("en"):
-            ref_rows.append({"timestamp": ts_ref.isoformat(sep=' '), "meter": rng.integers(100,999), "power_kw": round(abs(rng.normal(5,1.5)),3), "voltage": round(220 + rng.normal(0,4),2)})
-            cur_rows.append({"timestamp": ts_cur.isoformat(sep=' '), "meter": rng.integers(100,999), "power_kw": round(abs(rng.normal(6,2)),3), "voltage": round(220 + rng.normal(1,6),2)})
+            ref_rows.append({"timestamp": ts_ref.isoformat(sep=' '), "meter": rng.integers(100, 999),
+                             "power_kw": round(abs(rng.normal(5, 1.5)), 3),
+                             "voltage": round(220 + rng.normal(0, 4), 2)})
+            cur_rows.append({"timestamp": ts_cur.isoformat(sep=' '), "meter": rng.integers(100, 999),
+                             "power_kw": round(abs(rng.normal(6, 2)), 3), "voltage": round(220 + rng.normal(1, 6), 2)})
         else:
             # default simple rows
-            ref_rows.append({"timestamp": ts_ref.isoformat(sep=' '), "value": round(abs(rng.normal(100,40)),2)})
-            cur_rows.append({"timestamp": ts_cur.isoformat(sep=' '), "value": round(abs(rng.normal(120,60)),2)})
+            ref_rows.append({"timestamp": ts_ref.isoformat(sep=' '), "value": round(abs(rng.normal(100, 40)), 2)})
+            cur_rows.append({"timestamp": ts_cur.isoformat(sep=' '), "value": round(abs(rng.normal(120, 60)), 2)})
     df_ref = pd.DataFrame(ref_rows)
     df_cur = pd.DataFrame(cur_rows)
     return df_ref.to_csv(index=False).encode("utf-8"), df_cur.to_csv(index=False).encode("utf-8")
+
 
 # ---------------------------
 # Sample metrics.json + embeddings generator
@@ -487,6 +577,7 @@ def generate_sample_metrics_json(domain: str):
     # realistic defaults vary by domain; keep it generic
     sample = {"f1": 0.78, "roc": 0.84, "precision": 0.75, "recall": 0.72}
     return json.dumps(sample, indent=2).encode("utf-8")
+
 
 def generate_sample_embeddings_pair(n_samples: int, dim: int, shift: float = 0.8):
     rng = np.random.default_rng(42)
@@ -500,6 +591,7 @@ def generate_sample_embeddings_pair(n_samples: int, dim: int, shift: float = 0.8
     np.save(buf_cur, cur)
     buf_cur.seek(0)
     return buf_ref.read(), buf_cur.read()
+
 
 # End of PART 1
 # -----------------------------------------------
@@ -515,6 +607,7 @@ def generate_sample_embeddings_pair(n_samples: int, dim: int, shift: float = 0.8
 # -----------------------------------------------
 PAGES = [
     "Home",
+    "FAQs",
     "Instructions",
     "Sample Data",
     "Upload & Analyze",
@@ -536,9 +629,7 @@ if page == "Home":
         Your intelligent companion for detecting data drift, model degradation, and guiding retraining decisions —
         with real-time insights powered by Groq Llama 3.1.
     </div>
-    """,unsafe_allow_html=True)
-
-
+    """, unsafe_allow_html=True)
 
     st.markdown("""
     ### ✨ What This System Does
@@ -555,20 +646,11 @@ if page == "Home":
 
     st.markdown("</div></div>", unsafe_allow_html=True)
 
-# -----------------------------------------------
-# INSTRUCTIONS — HOVER FLIP CARDS
-# -----------------------------------------------
-elif page == "Instructions":
-     
-
-    st.markdown("## 📘 Instructions")
+elif page == "FAQs":
+    st.markdown("## 📘 Frequently Asked Questions")
     st.write("Click or hover on the cards below to reveal explanations.")
 
-    # -------------------------
-    # FLASHCARDS (Hover Flip)
-    # -------------------------
-    st.markdown("### 📦 Core Concepts Explained")
-
+    # Flashcards for FAQ
     flashcards = [
         ("What is Drift?",
          "When new incoming data looks different from past data, the model becomes outdated and inaccurate."),
@@ -588,6 +670,7 @@ elif page == "Instructions":
          "They analyze your data, metrics & embeddings and provide clear actionable recommendations.")
     ]
 
+    # Render flip cards
     st.markdown("<div class='flip-grid'>", unsafe_allow_html=True)
     for front, back in flashcards:
         st.markdown(f"""
@@ -604,10 +687,18 @@ elif page == "Instructions":
         """, unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
+# -----------------------------------------------
+# INSTRUCTIONS — HOVER FLIP CARDS
+# -----------------------------------------------
+elif page == "Instructions":
+
+    st.markdown("## 📘 Instructions")
+
+
     # -------------------------
     # Developer Steps
     # -------------------------
-    st.markdown("## 🛠 How to Use This System (Developer Steps)")
+    st.markdown("## 🛠 How to Use This System ")
 
     st.markdown("""
     **Step 1 — Download Sample Data**  
@@ -675,7 +766,7 @@ np.save("cur_embeddings.npy", cur_emb)
 # SAMPLE DATA PAGE — CSV + METRICS + EMBEDDINGS GENERATOR
 # -----------------------------------------------
 elif page == "Sample Data":
-     
+
     st.markdown("## 🧪 Sample Data Generator")
     st.write("Generate test-ready data for any domain.")
 
@@ -899,11 +990,13 @@ from docx import Document
 from reportlab.platypus import SimpleDocTemplate, Paragraph
 from reportlab.lib.styles import getSampleStyleSheet
 
+
 # ------------------------------------------------------
 # ===== EXPORT HELPERS: TXT / DOCX / PDF
 # ------------------------------------------------------
 def export_txt(text: str):
     return BytesIO(text.encode("utf-8"))
+
 
 def export_docx(text: str):
     buffer = BytesIO()
@@ -913,6 +1006,7 @@ def export_docx(text: str):
     doc.save(buffer)
     buffer.seek(0)
     return buffer
+
 
 def export_pdf(text: str):
     buffer = BytesIO()
@@ -925,13 +1019,17 @@ def export_pdf(text: str):
     buffer.seek(0)
     return buffer
 
+
 # ------------------------------------------------------
 # ===== DOMAIN INFERENCE FROM DATA / DRIFT
 # ------------------------------------------------------
 def infer_domain_from_data(df=None, drift=None, metrics=None):
+    # Check if df is a DataFrame (use it for domain inference)
     if df is not None:
+        # Ensure the input is a DataFrame and get the column names
         cols = [c.lower() for c in df.columns]
 
+        # Domain inference based on column names
         ec = ["session", "product", "category", "cart", "order", "sku"]
         fi = ["amount", "transaction", "balance", "loan", "credit"]
         hc = ["glucose", "wbc", "pulse", "patient"]
@@ -939,6 +1037,7 @@ def infer_domain_from_data(df=None, drift=None, metrics=None):
         rt = ["footfall", "store", "region", "sales"]
         ss = ["tenant_id", "subscription", "user_id"]
 
+        # Helper function to check column matches
         def match(keys):
             return any(k in col for col in cols for k in keys)
 
@@ -949,9 +1048,11 @@ def infer_domain_from_data(df=None, drift=None, metrics=None):
         if match(rt): return "Retail-Offline"
         if match(ss): return "SaaS"
 
-    # drift-only inference
-    if drift is not None:
+    # Check if drift is a dictionary (use its keys for domain inference)
+    elif drift is not None and isinstance(drift, dict):
         dcols = [c.lower() for c in drift.keys()]
+
+        # Domain inference based on drift data (dictionary)
         if "glucose" in dcols or "wbc" in dcols:
             return "Healthcare"
         if "session" in dcols or "category" in dcols:
@@ -959,13 +1060,13 @@ def infer_domain_from_data(df=None, drift=None, metrics=None):
         if "amount" in dcols or "transaction" in dcols:
             return "Finance"
 
-    # metric-only inference
+    # Metric-based inference
     if metrics is not None:
         if "roc" in metrics or "precision" in metrics:
             return "Generic ML"
 
+    # Return None if no inference matches
     return None
-
 
 # ------------------------------------------------------
 # ===== DRIFT ENGINE (final stable)
@@ -1063,7 +1164,7 @@ def compute_full_drift(ref_df, cur_df):
         drift.update(compute_categorical_drift(ref[categorical_cols], cur[categorical_cols]))
 
     if not drift:
-        return None, f"Could not compute drift. Usable={numeric_cols+categorical_cols}, Ignored={ignored}"
+        return None, f"Could not compute drift. Usable={numeric_cols + categorical_cols}, Ignored={ignored}"
 
     return {
         "drift": drift,
@@ -1228,7 +1329,7 @@ if page == "Upload & Analyze":
 
         mode = st.selectbox(
             "Choose explanation type:",
-            ["Layman Explanation", "Technical Explanation", "Premium Breakdown (Recommended)"]
+            ["Layman Explanation", "Technical Explanation"]
         )
 
         # ======================================================================
@@ -1236,7 +1337,7 @@ if page == "Upload & Analyze":
         # ======================================================================
 
         if mode == "Layman Explanation":
-            st.markdown("### 🟣 Layman Explanation\nHere’s what changed:")
+            st.markdown("### Layman Explanation\nHere’s what changed:")
 
             for feature, score in sorted_items:
                 sev, icon = drift_severity(score)
@@ -1257,7 +1358,7 @@ if page == "Upload & Analyze":
         # ======================================================================
 
         elif mode == "Technical Explanation":
-            st.markdown("### 🔵 Technical Explanation")
+            st.markdown("### Technical Explanation")
 
             for feature, score in sorted_items:
                 sev, icon = drift_severity(score)
@@ -1275,31 +1376,6 @@ if page == "Upload & Analyze":
                         """
                     )
 
-        # ======================================================================
-        #           PREMIUM BREAKDOWN (BUSINESS + DEV SUGGESTIONS)
-        # ======================================================================
-
-        elif mode == "Premium Breakdown (Recommended)":
-            st.markdown("## ✨ PREMIUM DRIFT BREAKDOWN")
-
-            for feature, score in sorted_items:
-                sev, icon = drift_severity(score)
-
-                with st.expander(f"{icon} {feature.replace('_', ' ').title()} — {sev} Drift ({score:.3f})"):
-                    st.markdown(
-                        f"""
-                        ### {icon} Severity: **{sev}**
-
-                        #### 📉 What changed?
-                        The distribution of **{feature}** shifted by **{score:.3f}**, meaning the new data doesn't match what your model was trained on.
-
-                        #### 💼 Business Meaning
-                        {business_impact(feature, score)}
-
-                        #### 🛠 Developer Fix Suggestions
-                        {fix_suggestion(feature, score)}
-                        """
-                    )
 
         # ======================================================================
         #                 EXPORT CLEAN REPORT (TXT, DOCX, PDF)
@@ -1369,7 +1445,7 @@ if page == "Upload & Analyze":
 # PAGE: Model Monitor (metrics + embeddings + retrain logic)
 # -----------------------------------------------
 elif page == "Model Monitor":
-     
+
     st.markdown("## 📈 Model Monitor")
 
     drift = st.session_state.last_drift
@@ -1414,9 +1490,9 @@ elif page == "Model Monitor":
 
         if drift:
             if total_drift >= 0.25:
-                reasons.append(f"Feature drift high: {round(total_drift,4)} >= 0.25")
+                reasons.append(f"Feature drift high: {round(total_drift, 4)} >= 0.25")
 
-        for k,v in metrics.items():
+        for k, v in metrics.items():
             if v < 0.7:
                 reasons.append(f"Metric '{k}' low: {v} < 0.7")
 
@@ -1462,6 +1538,7 @@ elif page == "AI Assistant":
     if "domain" not in st.session_state:
         st.session_state.domain = ""
 
+
     def add_memory(role, content):
         st.session_state.short_memory.append({
             "role": role,
@@ -1470,9 +1547,17 @@ elif page == "AI Assistant":
         })
         st.session_state.short_memory = st.session_state.short_memory[-12:]
 
-    # --- If domain not set but drift results exist → infer automatically ---
+
     if not st.session_state.domain and "last_drift" in st.session_state:
-        auto = infer_domain_from_data(st.session_state["last_drift"])
+        drift_data = st.session_state["last_drift"]
+
+        # Check if drift_data is a dictionary and convert it to DataFrame if necessary
+        if isinstance(drift_data, dict):
+            # Convert dictionary to DataFrame
+            drift_data = pd.DataFrame([drift_data])  # Convert dict to a DataFrame
+
+        # Now call the infer_domain_from_data with the DataFrame
+        auto = infer_domain_from_data(drift_data)
         if auto:
             st.session_state.domain = auto
             add_memory("assistant", f"Domain automatically inferred as {auto} based on drift patterns.")
@@ -1487,7 +1572,7 @@ elif page == "AI Assistant":
     else:
         st.markdown(
             "<div class='small' style='margin-bottom:8px;'>"
-            "💡 Before starting, please type your domain (e.g., **ecommerce**, **finance**, or **custom: telecom**)."
+            "💡 Before starting, please type your domain (e.g., ecommerce, finance, or custom: telecom)."
             "</div>",
             unsafe_allow_html=True
         )
@@ -1504,6 +1589,7 @@ elif page == "AI Assistant":
     )
     user_input = st.chat_input(placeholder_text)
 
+
     # ---------------------------
     #     UTILITY FUNCTIONS
     # ---------------------------
@@ -1512,9 +1598,11 @@ elif page == "AI Assistant":
         ood = ["who is", "virat", "movie", "song", "weather", "capital", "president"]
         return any(x in t for x in ood)
 
+
     def wants_simplify(text):
         t = text.lower()
         return any(x in t for x in ["layman", "simple", "explain simply", "explain like"])
+
 
     # ---------------------------
     #     ON USER INPUT
@@ -1527,10 +1615,11 @@ elif page == "AI Assistant":
             detected = resolve_domain(user_input)
             if detected:
                 st.session_state.domain = detected
-                add_memory("assistant", f"✔ Domain set to **{detected}**. Now ask me drift/model questions.")
+                add_memory("assistant", f"✔ Domain set to {detected}. Now ask me drift/model questions.")
                 st.experimental_rerun()
             else:
-                add_memory("assistant", "❗ I couldn't detect your domain. Please type `ecommerce`, `finance`, or `custom: <name>`.")
+                add_memory("assistant",
+                           "❗ I couldn't detect your domain. Please type ecommerce, finance, or custom: <name>.")
                 st.experimental_rerun()
 
         # 2) User asked “explain in simple terms”
