@@ -1147,8 +1147,8 @@ def compute_full_drift(ref_df, cur_df):
         "numeric_columns": numeric_cols,
         "categorical_columns": categorical_cols,
         "ignored_columns": ignored,
-        "ref_processed": ref,
-        "cur_processed": cur
+    #    "ref_processed": ref,
+    #    "cur_processed": cur
     }, None
 
 
@@ -1729,3 +1729,4 @@ elif page == "About":
     """)
 
     st.markdown("</div></div>", unsafe_allow_html=True)
+
