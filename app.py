@@ -1,6 +1,3 @@
-# app.py — PART 1 of 3
-# UI foundation, CSS (hover flip-cards), sidebar, utilities, groq helpers, agent shells, reporting helpers
-
 import os
 import io
 import json
@@ -593,14 +590,6 @@ def generate_sample_embeddings_pair(n_samples: int, dim: int, shift: float = 0.8
     return buf_ref.read(), buf_cur.read()
 
 
-# End of PART 1
-# -----------------------------------------------
-# app.py — PART 2 OF 3
-# Pages:
-# - Home
-# - Instructions (Hover Flip Cards)
-# - Sample Data Generator (CSV + JSON + Embeddings)
-# -----------------------------------------------
 
 # -----------------------------------------------
 # Sidebar Navigation
@@ -822,16 +811,6 @@ elif page == "Sample Data":
 
     st.markdown("</div></div>", unsafe_allow_html=True)
 
-# End of PART 2
-# -----------------------------------------------
-# app.py — PART 3 of 3
-# Remaining pages:
-# - Upload & Analyze
-# - Model Monitor
-# - AI Assistant (Claude-style)
-# - About
-# -----------------------------------------------
-
 ## ---------------------------
 # PAGE: Upload & Analyze (ROBUST DRIFT)
 # Replace existing Upload & Analyze page with this block
@@ -839,9 +818,6 @@ elif page == "Sample Data":
 import numpy as np
 from scipy.stats import ks_2samp
 
-# ============================================
-# FINAL DRIFT ENGINE + UPLOAD & ANALYZE PAGE
-# ============================================
 
 import numpy as np
 from scipy.stats import ks_2samp
@@ -1021,7 +997,7 @@ def export_pdf(text: str):
 
 
 # ------------------------------------------------------
-# ===== DOMAIN INFERENCE FROM DATA / DRIFT
+# DOMAIN INFERENCE FROM DATA / DRIFT
 # ------------------------------------------------------
 def infer_domain_from_data(df=None, drift=None, metrics=None):
     # Check if df is a DataFrame (use it for domain inference)
@@ -1069,7 +1045,7 @@ def infer_domain_from_data(df=None, drift=None, metrics=None):
     return None
 
 # ------------------------------------------------------
-# ===== DRIFT ENGINE (final stable)
+# DRIFT ENGINE (final stable)
 # ------------------------------------------------------
 def preprocess_for_drift(df):
     df = df.copy()
@@ -1753,7 +1729,3 @@ elif page == "About":
     """)
 
     st.markdown("</div></div>", unsafe_allow_html=True)
-
-# -----------------------------------------------
-# END OF APP
-# -----------------------------------------------
