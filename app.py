@@ -1592,11 +1592,11 @@ elif page == "AI Assistant":
             if detected:
                 st.session_state.domain = detected
                 add_memory("assistant", f"✔ Domain set to {detected}. Now ask me drift/model questions.")
-                st.experimental_rerun()
+                st.rerun()
             else:
                 add_memory("assistant",
                            "❗ I couldn't detect your domain. Please type ecommerce, finance, or custom: <name>.")
-                st.experimental_rerun()
+                st.rerun()
 
         # 2) User asked “explain in simple terms”
         if wants_simplify(user_input):
@@ -1607,12 +1607,12 @@ elif page == "AI Assistant":
             )
             if not last_assistant:
                 add_memory("assistant", "I don’t have a previous explanation to simplify.")
-                st.experimental_rerun()
+                st.rerun()
 
             prompt = f"Simplify the following into easy layman terms:\n\n{last_assistant}"
             simple = groq_complete_sync(prompt, st.session_state.domain)
             add_memory("assistant", simple)
-            st.experimental_rerun()
+            st.rerun()
 
         # 3) Out-of-Domain queries blocked
         if heuristic_is_ood(user_input):
@@ -1620,7 +1620,7 @@ elif page == "AI Assistant":
                 "assistant",
                 "❌ This question is outside drift/model monitoring. Ask about drift, metrics, embeddings, or retraining."
             )
-            st.experimental_rerun()
+            st.rerun()
 
         # 4) Multi-agent analysis triggers
         triggers = ["drift", "psi", "embedding", "retrain", "degrade", "metrics", "analysis", "why"]
@@ -1669,7 +1669,7 @@ Synthesize the above into:
 """
             final = groq_complete_sync(combined, domain)
             add_memory("assistant", final)
-            st.experimental_rerun()
+            st.rerun()
 
         # ---------------------------
         # NORMAL LLM REPLY
@@ -1690,7 +1690,7 @@ Last drift:
 
         reply = groq_complete_sync(f"{sys_prompt}\nUser: {user_input}", domain)
         add_memory("assistant", reply)
-        st.experimental_rerun()
+        st.rerun()
 
     # ---------------------------
     # CLEAR CHAT BUTTON
@@ -1698,7 +1698,7 @@ Last drift:
     if st.button("🧹 Clear Chat"):
         st.session_state.short_memory = []
         st.session_state.domain = ""
-        st.experimental_rerun()
+        st.rerun()
 
 
 # -----------------------------------------------
@@ -1729,4 +1729,5 @@ elif page == "About":
     """)
 
     st.markdown("</div></div>", unsafe_allow_html=True)
+
 
