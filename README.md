@@ -151,8 +151,3 @@ Download your analysis as:
 
 If you need help, improvements, deployment support, or customization — feel free to ask! 😊
 
-```
-
-
-If you want a **shorter version**, **more professional tone**, **project badges**, or **screenshots section**, I can generate that too.
-```
