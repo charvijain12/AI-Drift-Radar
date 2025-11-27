@@ -1,4 +1,6 @@
-# 📡 AI Drift Radar  
+# Internal Project 2 for EY GDS AIML Training
+
+## 📡 AI Drift Radar  
 *A full-stack data drift, model degradation & MLOps assistant powered by Streamlit + Groq Llama 3.1.*
 
 ---
